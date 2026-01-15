@@ -2,6 +2,8 @@
 
 **Version 3.0 | Updated: 2026-01**
 
+***Note, the use of AI is not permmitted***
+
 Welcome to the Stryker Senior Data Engineer take-home exercise. This repository provides a lightweight, opinionated starting point intended to simulate a realistic data engineering workload at Stryker.
 
 This challenge is **not** about completing a large volume of code. Instead, it is designed to surface how you think about data systems, tradeoffs, modeling decisions, scalability, and long-term maintainability.

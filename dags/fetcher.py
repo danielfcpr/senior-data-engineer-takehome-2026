@@ -1,5 +1,9 @@
-from datetime import datetime, timedelta
-import time
+from datetime import datetime, timedelta, timezone
+import os
+import logging
+import requests
+import json
+import uuid
 
 # The DAG object; we'll need this to instantiate a DAG
 from airflow import DAG
@@ -19,43 +23,77 @@ default_args = {
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
 }
+
+def fetch_weather():
+    lat = "9.9339"
+    lon = "-84.0849"
+    api_key = os.getenv("OPENWEATHER_API_KEY")
+
+    if not api_key:
+        raise ValueError("OPENWEATHER_API_KEY environment variable is not set")
+
+    url = "https://api.openweathermap.org/data/2.5/weather"
+    params = {
+        "lat": lat,
+        "lon": lon,
+        "appid": api_key,
+        "units": "metric",
+        "lang": "en",
+    }
+
+    response = requests.get(url, params=params, timeout=30)
+    response.raise_for_status()
+    payload = response.json()
+
+    ingestion_record = {
+        "ingestion_id": str(uuid.uuid4()),
+        "ingestion_ts": datetime.now(timezone.utc).isoformat(),
+        "payload_json": json.dumps(payload),
+    }
+
+    logging.info("Fetched payload for %s", payload.get("name"))
+    logging.info("Ingestion ID: %s", ingestion_record["ingestion_id"])
+
+    return ingestion_record
+
 with DAG(
         'fetcher',
         default_args=default_args,
         description='To fetch the weather data',
-        schedule_interval=timedelta(minutes=5),
-        start_date=datetime(2021, 1, 1),
+        schedule_interval=None,
+        start_date=datetime(2026, 4, 18),
         catchup=False,
         tags=['take-home'],
 ) as dag:
 
-    # @TODO: Add your function here. Example here: https://airflow.apache.org/docs/apache-airflow/stable/_modules/airflow/example_dags/example_python_operator.html
-    # Hint: How to fetch the weather data from OpenWeatherMap?
-    def my_sleeping_function(random_base):
-        """This is a function that will run within the DAG execution"""
-        time.sleep(random_base)
-
     t1 = PythonOperator(
-        task_id='ingest_api_data',
-        python_callable=my_sleeping_function,
-        op_kwargs={'random_base': 101.0 / 10},
+        task_id='data_ingestion_dag',
+        python_callable=fetch_weather,
     )
 
-    # @TODO: Fill in the below
     t2 = PostgresOperator(
         task_id="create_raw_dataset",
+        postgres_conn_id="postgres_default",
         sql="""
             CREATE TABLE IF NOT EXISTS raw_current_weather (
-           );
-          """,
+                ingestion_id VARCHAR(50) PRIMARY KEY,
+                ingestion_ts TIMESTAMP NOT NULL,
+                payload JSONB NOT NULL
+            );
+            """,
     )
 
-    # @TODO: Fill in the below
     t3 = PostgresOperator(
         task_id="store_dataset",
+        postgres_conn_id="postgres_default",
         sql="""
-            INSERT INTO ...
-          """,
+            INSERT INTO raw_current_weather (ingestion_id, ingestion_ts, payload)
+            VALUES (
+                '{{ ti.xcom_pull(task_ids="data_ingestion_dag")["ingestion_id"] }}',
+                '{{ ti.xcom_pull(task_ids="data_ingestion_dag")["ingestion_ts"] }}'::timestamp,
+                '{{ ti.xcom_pull(task_ids="data_ingestion_dag")["payload_json"] | replace("'", "''") }}'::jsonb
+            );
+            """,
     )
 
     t1 >> t2 >> t3

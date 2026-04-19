@@ -198,41 +198,62 @@ Use the sections below to document your work.
 
 ### Time Spent
 
-Approximate total time spent on the exercise.
-Include any learning or research time if applicable.
+- Setting up Docker-compose and fixing bug with airflow-triggerer: 1h
+- Implementing fetcher DAG and getting familiar with OpenWeather API, and storage of JSON objects in Postgres : 1h
+- Defining data architecture and modeling decisions: 30m
+- Defining database to use (relational database vs OLAP/columnar database): 30m
+- Transformation logic (SQL) and defining derived tables (AI was used to accelerate development time): 2h
+- Testing and debugging: 1h
+
+Total: ~6 hours
 
 ---
 
 ### Assumptions
 
-List any assumptions you made and how they influenced your design choices.
-
+- The API returns data for a single city, so the silver grain is defined as one row per source observation timestamp.
+- Raw ingestion is append-only, even if duplicate observations are retrieved.
+- The dataset volume is small, so no physical partitioning was implemented.
 ---
 
 ### Tradeoffs & Design Decisions
 
-Describe key decisions you made and alternatives you considered.
+#### Architecture:
+Implemented a layered Medallion architecture (raw → silver → gold) due to the following reasons:
+- Raw/Bronze: Ingestion and storage of raw data "as it is" to handle schema evolution and data lineage/auditability.
+- Silver: Intermediate transformation (Data cleaning, de-duplication, typed columns).
+- Gold: Final curated datasets for analytics and downstream consumption.
+
+#### Tradeoffs:
+- Database/storage: Chose a simple Postgres database for ease of setup and demonstration, 
+but this may not scale well for larger datasets or more complex transformations. 
+A columnar OLAP database could be more performant for analytical queries.
+- Computing Transformations: Implemented transformations in SQL for simplicity due to the low volume of data, but with larger datasets i would implement Spark based tools for distributed computing.
+- Orchestartion: Pipelines are implemented as separate DAGs (fetcher, silver, gold), did not implement a master orchestration DAG due to time constraints. 
 
 ---
 
 ### Next Steps / Improvements
-
-What would you implement next with more time?
-Examples:
-
-- Incremental loads
-- Schema evolution handling
-- Testing strategy
-- Observability / monitoring
-- Performance optimizations
-
+- True incremental processing: Currently the pipeline scans the full raw table and uses deduplication + NOT EXISTS
+- Schema evolution handling: Add logic to handle changes in the API response structure, such as new fields or changes in data types.
+- Data quality/ testing: Implement checks to key metrics. Evaluate implementation of unit tests for transformation logic.
+- Observability / monitoring: Add exception handling to facilitate monitoring and debugging.
+- Performance optimizations: Evaluate using partition strategies and an OLAP/columnar database solution. Also evaluate using Spark-based tools for distributed computing if dataset volume increases.
+- Orchestration: Implement a master DAG to orchestrate the entire workflow and manage dependencies between fetcher, silver, and gold DAGs.
+- Use of serverless services in cloud environments: Evaluate using serverless compute and managed  services to reduce operational overhead and reduce costs.
 ---
 
 ### Instructions to the Evaluator
 
-Provide any notes or guidance that would help someone reviewing or running your solution.
-
+This projects uses environment variables stored in a `.env` file.
+To run the project:
+1. Create a `.env` file in the root directory by copying the provided example:
+```bash
+cp .env.example .env
+```
+2. Fill the required environment variables in the `.env` file.
+3. Start the project using Docker Compose:
+```bash 
+docker-compose up
+``` 
 ---
-
-Thank you for taking the time to complete this exercise.
-We look forward to discussing your approach and design decisions.
